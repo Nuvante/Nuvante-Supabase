@@ -1,0 +1,117 @@
+client table in supabase:
+
+Name	Description	Data Type	Format	
+clerk_id
+
+No description
+
+text	text	
+username
+
+No description
+
+text	text	
+first_name
+
+No description
+
+text	text	
+last_name
+
+No description
+
+text	text	
+email
+
+No description
+
+text	text	
+address
+
+No description
+
+text	text	
+cart
+
+No description
+
+jsonb	jsonb	
+wishlist
+
+No description
+
+jsonb	jsonb	
+created_at
+
+No description
+
+timestamp with time zone	timestamptz	
+updated_at
+
+No description
+
+timestamp with time zone	timestamptz
+
+product table in supabase:
+
+Name	Description	Data Type	Format	
+id
+
+No description
+
+uuid	uuid	
+product_name
+
+No description
+
+text	text	
+product_images
+
+No description
+
+jsonb	jsonb	
+product_price
+
+No description
+
+numeric	numeric	
+cancelled_product_price
+
+No description
+
+numeric	numeric	
+latest
+
+No description
+
+boolean	bool	
+description
+
+No description
+
+text	text	
+materials
+
+No description
+
+text	text	
+packaging
+
+No description
+
+text	text	
+shipping
+
+No description
+
+text	text	
+product_info
+
+No description
+
+text	text	
+type
+
+No description
+
+text	text

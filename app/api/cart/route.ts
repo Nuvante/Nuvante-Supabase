@@ -1,150 +1,219 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "@clerk/nextjs/server";
-import supabase from "@/lib/supabase"; // centralized supabase client
+import { createClient } from "@supabase/supabase-js";
 
-function popElement(array: any[], victim: any) {
-  return array.filter((element) => element !== victim);
-}
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
-export async function GET(request: any) {
+export async function GET() {
   try {
     const user = await currentUser();
-
     if (!user) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
 
-    const clerk_id = user.id;
-    console.log("Fetching cart for user:", clerk_id);
-
-    // Get cart IDs
     const { data: client, error: clientError } = await supabase
-      .from("clients")
+      .from("client")
       .select("cart")
-      .eq("clerk_id", clerk_id)
+      .eq("clerk_id", user.id)
       .single();
 
     if (clientError) {
-      console.error("Error fetching client:", clientError);
-      return new NextResponse("Failed to fetch client data", { status: 500 });
+      console.error("Error fetching cart:", clientError);
+      return new NextResponse("Error fetching cart", { status: 500 });
     }
 
-    if (!client) {
-      console.log("No client found for user:", clerk_id);
-      return NextResponse.json([]);
+    if (!client?.cart) {
+      return new NextResponse(JSON.stringify([]), { status: 200 });
     }
 
-    const cart = client.cart || [];
-    console.log("Cart items:", cart);
+    // Fetch product details for each item in cart
+    const cartItems = await Promise.all(
+      client.cart.map(async (item: { id: string; quantity: number }) => {
+        const { data: product, error: productError } = await supabase
+          .from("product")
+          .select("*")
+          .eq("id", item.id)
+          .single();
 
-    if (!cart.length) {
-      console.log("Cart is empty");
-      return NextResponse.json([]);
-    }
+        if (productError) {
+          console.error("Error fetching product:", productError);
+          return null;
+        }
 
-    // Fetch product details with exact schema
-    const { data: products, error: productsError } = await supabase
-      .from("products")
-      .select(`
-        id,
-        product_name,
-        product_images,
-        product_price,
-        cancelled_product_price,
-        latest,
-        description,
-        materials,
-        packaging,
-        shipping,
-        product_info,
-        type
-      `)
-      .in("id", cart);
+        return {
+          id: product.id,
+          name: product.product_name,
+          price: product.product_price,
+          image: product.product_images[0],
+          quantity: item.quantity,
+        };
+      })
+    );
 
-    if (productsError) {
-      console.error("Error fetching products:", productsError);
-      return new NextResponse("Failed to fetch products", { status: 500 });
-    }
+    const validCartItems = cartItems.filter((item): item is NonNullable<typeof item> => item !== null);
 
-    if (!products || !products.length) {
-      console.log("No products found for cart items");
-      return NextResponse.json([]);
-    }
-
-    // Transform the data to match the expected format
-    const transformedProducts = products.map((product) => ({
-      _id: product.id,
-      name: product.product_name,
-      price: Number(product.product_price),
-      formattedPrice: `₹${Number(product.product_price).toLocaleString('en-IN')}`,
-      image: product.product_images?.[0] || '/placeholder.png',
-      description: product.description,
-      materials: product.materials,
-      packaging: product.packaging,
-      shipping: product.shipping,
-      productInfo: product.product_info,
-      type: product.type,
-      cancelledPrice: Number(product.cancelled_product_price),
-      formattedCancelledPrice: `₹${Number(product.cancelled_product_price).toLocaleString('en-IN')}`,
-      isLatest: product.latest,
-      quantity: 1 // Default quantity
-    }));
-
-    console.log("Transformed products:", transformedProducts);
-    return NextResponse.json(transformedProducts);
+    return new NextResponse(JSON.stringify(validCartItems), { status: 200 });
   } catch (error) {
-    console.error("Unexpected error in cart GET:", error);
+    console.error("Error in GET /api/cart:", error);
     return new NextResponse("Internal Server Error", { status: 500 });
   }
 }
 
-export async function POST(request: any) {
-  const user = await currentUser();
-
-  if (!user) {
-    return new NextResponse("Unauthorized", { status: 401 });
-  }
-
-  const clerk_id = user.id;
-
+export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const user = await currentUser();
+    if (!user) {
+      return new NextResponse("Unauthorized", { status: 401 });
+    }
 
-    // Supabase flow only
-    const { data: client, error } = await supabase
-      .from("clients")
+    const body = await request.json();
+    const { itemId } = body;
+
+    if (!itemId) {
+      return new NextResponse("Item ID is required", { status: 400 });
+    }
+
+    // Get current cart
+    const { data: client, error: clientError } = await supabase
+      .from("client")
       .select("cart")
-      .eq("clerk_id", clerk_id)
+      .eq("clerk_id", user.id)
       .single();
 
-    if (error || !client) {
-      console.error("Supabase client fetch error:", error);
-      return new NextResponse("Client not found", { status: 404 });
+    if (clientError) {
+      console.error("Error fetching client:", clientError);
+      return new NextResponse("Error fetching client data", { status: 500 });
     }
 
-    let cart = client.cart || [];
+    const currentCart = client?.cart || [];
+    const existingItemIndex = currentCart.findIndex((item: { id: string }) => item.id === itemId);
 
-    if (body.append) {
-      if (!cart.includes(body.identifier)) {
-        cart.push(body.identifier);
-      }
+    if (existingItemIndex !== -1) {
+      // Update quantity if item exists
+      currentCart[existingItemIndex].quantity += 1;
     } else {
-      cart = popElement(cart, body.identifier);
+      // Add new item
+      currentCart.push({ id: itemId, quantity: 1 });
     }
 
+    // Update cart in database
     const { error: updateError } = await supabase
-      .from("clients")
-      .update({ cart })
-      .eq("clerk_id", clerk_id);
+      .from("client")
+      .update({ cart: currentCart })
+      .eq("clerk_id", user.id);
 
     if (updateError) {
-      console.error("Supabase cart update error:", updateError);
-      return new NextResponse("Failed to update cart", { status: 500 });
+      console.error("Error updating cart:", updateError);
+      return new NextResponse("Error updating cart", { status: 500 });
     }
 
-    return new NextResponse("OK", { status: 200 });
+    return new NextResponse("Cart updated successfully", { status: 200 });
   } catch (error) {
-    console.error("Error in cart POST:", error);
+    console.error("Error in POST /api/cart:", error);
+    return new NextResponse("Internal Server Error", { status: 500 });
+  }
+}
+
+export async function PUT(request: Request) {
+  try {
+    const user = await currentUser();
+    if (!user) {
+      return new NextResponse("Unauthorized", { status: 401 });
+    }
+
+    const body = await request.json();
+    const { itemId, quantity } = body;
+
+    if (!itemId || quantity === undefined) {
+      return new NextResponse("Item ID and quantity are required", { status: 400 });
+    }
+
+    // Get current cart
+    const { data: client, error: clientError } = await supabase
+      .from("client")
+      .select("cart")
+      .eq("clerk_id", user.id)
+      .single();
+
+    if (clientError) {
+      console.error("Error fetching client:", clientError);
+      return new NextResponse("Error fetching client data", { status: 500 });
+    }
+
+    const currentCart = client?.cart || [];
+    const existingItemIndex = currentCart.findIndex((item: { id: string }) => item.id === itemId);
+
+    if (existingItemIndex === -1) {
+      return new NextResponse("Item not found in cart", { status: 404 });
+    }
+
+    // Update quantity
+    currentCart[existingItemIndex].quantity = quantity;
+
+    // Update cart in database
+    const { error: updateError } = await supabase
+      .from("client")
+      .update({ cart: currentCart })
+      .eq("clerk_id", user.id);
+
+    if (updateError) {
+      console.error("Error updating cart:", updateError);
+      return new NextResponse("Error updating cart", { status: 500 });
+    }
+
+    return new NextResponse("Cart updated successfully", { status: 200 });
+  } catch (error) {
+    console.error("Error in PUT /api/cart:", error);
+    return new NextResponse("Internal Server Error", { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const user = await currentUser();
+    if (!user) {
+      return new NextResponse("Unauthorized", { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const itemId = searchParams.get("itemId");
+
+    if (!itemId) {
+      return new NextResponse("Item ID is required", { status: 400 });
+    }
+
+    // Get current cart
+    const { data: client, error: clientError } = await supabase
+      .from("client")
+      .select("cart")
+      .eq("clerk_id", user.id)
+      .single();
+
+    if (clientError) {
+      console.error("Error fetching client:", clientError);
+      return new NextResponse("Error fetching client data", { status: 500 });
+    }
+
+    const currentCart = client?.cart || [];
+    const updatedCart = currentCart.filter((item: { id: string }) => item.id !== itemId);
+
+    // Update cart in database
+    const { error: updateError } = await supabase
+      .from("client")
+      .update({ cart: updatedCart })
+      .eq("clerk_id", user.id);
+
+    if (updateError) {
+      console.error("Error updating cart:", updateError);
+      return new NextResponse("Error updating cart", { status: 500 });
+    }
+
+    return new NextResponse("Item removed from cart", { status: 200 });
+  } catch (error) {
+    console.error("Error in DELETE /api/cart:", error);
     return new NextResponse("Internal Server Error", { status: 500 });
   }
 }

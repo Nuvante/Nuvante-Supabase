@@ -1,293 +1,203 @@
 "use client";
-import React, { useEffect, useState, useCallback } from "react";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
-import Card from "@/components/Card";
-import axios from "axios";
+
+import React, { useState, useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
-import { GlobalContext } from "@/context/Global";
-import { useContext } from "react";
+import axios from "axios";
 import Image from "next/image";
 import { motion } from "framer-motion";
-import { useParams } from "next/navigation";
-import Alert from "@/components/Alert";
+import { Heart, ShoppingBag, Trash2 } from "lucide-react";
+import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
+import { useRouter } from "next/navigation";
 
-/**
- * 1.Pretty exhausting function (handleBag) running in O(n^2) probably. Considering the post requests to be linear.
- * 2.The mechanism is straightforward, if an item from the wishlist is not present in the global cart, add it.
- * 3.T̶O̶D̶O̶:̶ b̶u̶g̶:̶ g̶l̶o̶b̶a̶l̶ c̶a̶r̶t̶ i̶s̶ u̶p̶d̶a̶t̶e̶d̶ b̶u̶t̶ t̶h̶e̶ d̶a̶t̶a̶b̶a̶s̶e̶ w̶a̶s̶ n̶o̶t̶ u̶p̶d̶a̶t̶e̶d̶.̶ (̶f̶i̶x̶e̶d̶)̶
- * 3.T̶O̶D̶O̶:̶ b̶u̶g̶: n̶u̶l̶l̶ |̶ u̶n̶d̶e̶f̶i̶n̶e̶d̶ |̶ [̶]̶ r̶e̶s̶p̶o̶n̶s̶e̶ w̶i̶l̶l̶ m̶e̶s̶s̶ w̶i̶t̶h̶ t̶h̶e̶ m̶a̶p̶ f̶u̶n̶c̶t̶i̶o̶n̶ (̶f̶i̶x̶e̶d̶)̶
- */
-
-const logo = "/logo.png";
-
-interface WishlistProduct {
-  _id: string;
+interface WishlistItem {
+  id: string;
   name: string;
   price: number;
   image: string;
-  status?: string;
 }
 
-interface AlertState {
-  show: boolean;
-  message: string;
-  type: "success" | "error";
-}
-
-const Wishlist = () => {
+const WishlistPage = () => {
   const { isSignedIn } = useUser();
-  const [wishlistProducts, setWishlistProducts] = useState<WishlistProduct[]>([]);
+  const router = useRouter();
+  const [wishlistItems, setWishlistItems] = useState<WishlistItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [updatingCart, setUpdatingCart] = useState(false);
-  const [alert, setAlert] = useState<AlertState>({
-    show: false,
-    message: "",
-    type: "success",
-  });
-
-  const context = useContext(GlobalContext);
-  if (!context) throw new Error("GlobalContext is not provided.");
-  const { GlobalWishlist, GlobalCart, changeGlobalCart } = context;
-
-  const url_params = useParams();
-
-  const showAlert = useCallback((message: string, type: "success" | "error") => {
-    setAlert({ show: true, message, type });
-  }, []);
-
-  const hideAlert = useCallback(() => {
-    setAlert((prev) => ({ ...prev, show: false }));
-  }, []);
-
-  const fetchWishlist = useCallback(async () => {
-    try {
-      console.log("Fetching wishlist..."); // Debug log
-      const response = await axios.post<WishlistProduct[]>("/api/propagation", {
-        type: "wishlist",
-      });
-
-      console.log("Wishlist API response:", response.data); // Debug log
-
-      if (response.status === 200 && Array.isArray(response.data)) {
-        // Ensure each product has all required fields
-        const validProducts = response.data.filter(product => {
-          const isValid = product && 
-            product._id && 
-            product.name && 
-            product.price && 
-            product.image;
-          
-          if (!isValid) {
-            console.log("Invalid product:", product); // Debug log for invalid products
-          }
-          return isValid;
-        }).map(product => ({
-          _id: product._id,
-          name: product.name,
-          price: product.price,
-          image: product.image,
-          status: product.status || "new"
-        }));
-        
-        console.log("Processed wishlist products:", validProducts); // Debug log
-        setWishlistProducts(validProducts);
-      } else {
-        console.error("Invalid response format:", response.data); // Debug log
-        throw new Error("Invalid response format");
-      }
-    } catch (error) {
-      console.error("Error fetching wishlist:", error);
-      const axiosError = error as { response?: { status: number; data?: any } };
-      if (axiosError.response?.status === 404) {
-        console.log("No wishlist found (404)"); // Debug log
-        setWishlistProducts([]);
-      } else {
-        console.error("Wishlist fetch error:", axiosError.response?.data); // Debug log
-        showAlert("Failed to fetch wishlist items", "error");
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [showAlert]);
+  const [error, setError] = useState<string | null>(null);
+  const [addingToCart, setAddingToCart] = useState<string | null>(null);
 
   useEffect(() => {
     if (isSignedIn) {
-      fetchWishlist();
+      fetchWishlistItems();
     }
-  }, [isSignedIn, fetchWishlist]);
+  }, [isSignedIn]);
 
-  // Add a debug effect to monitor wishlistProducts
-  useEffect(() => {
-    console.log("Current wishlist products:", wishlistProducts);
-  }, [wishlistProducts]);
-
-  const handleBag = useCallback(async () => {
-    if (updatingCart) return;
-    setUpdatingCart(true);
-
+  const fetchWishlistItems = async () => {
     try {
-      const itemsToAdd = GlobalWishlist.filter(id => !GlobalCart.includes(id));
-      
-      if (itemsToAdd.length === 0) {
-        showAlert("All items are already in your cart!", "success");
-        setUpdatingCart(false);
-        return;
+      const response = await axios.get("/api/wishlist");
+      if (response.status === 200) {
+        setWishlistItems(response.data as WishlistItem[]);
       }
-
-      // Optimistically update the UI
-      const optimisticUpdates = itemsToAdd.map(id => {
-        changeGlobalCart(id, true);
-        return id;
-      });
-
-      const results = await Promise.all(
-        itemsToAdd.map(async (id) => {
-          try {
-            const response = await axios.post(`/api/cart`, {
-              identifier: id,
-              append: true,
-            });
-            
-            if (response.status === 200 || response.data === 200) {
-              return { id, success: true };
-            }
-            // Revert optimistic update on failure
-            changeGlobalCart(id, false);
-            return { id, success: false };
-          } catch (error) {
-            console.error(`Error adding item ${id} to cart:`, error);
-            // Revert optimistic update on error
-            changeGlobalCart(id, false);
-            return { id, success: false };
-          }
-        })
-      );
-
-      const successfulUpdates = results.filter(result => result.success);
-      
-      if (successfulUpdates.length > 0) {
-        showAlert(`Successfully added ${successfulUpdates.length} items to your cart!`, "success");
-      }
-
-      if (successfulUpdates.length < itemsToAdd.length) {
-        showAlert("Some items could not be added to your cart. Please try again.", "error");
-      }
-    } catch (error) {
-      console.error("Error updating cart:", error);
-      showAlert("There was an error updating your cart. Please try again.", "error");
+    } catch (err) {
+      setError("Failed to fetch wishlist items");
+      console.error("Error fetching wishlist:", err);
     } finally {
-      setUpdatingCart(false);
+      setLoading(false);
     }
-  }, [updatingCart, GlobalWishlist, GlobalCart, changeGlobalCart, showAlert]);
+  };
+
+  const removeFromWishlist = async (itemId: string) => {
+    try {
+      await axios.delete(`/api/wishlist/${itemId}`);
+      setWishlistItems(prevItems => prevItems.filter(item => item.id !== itemId));
+    } catch (err) {
+      setError("Failed to remove item from wishlist");
+      console.error("Error removing from wishlist:", err);
+    }
+  };
+
+  const addToCart = async (itemId: string) => {
+    setAddingToCart(itemId);
+    try {
+      await axios.post("/api/cart", { itemId });
+      await removeFromWishlist(itemId);
+    } catch (err) {
+      setError("Failed to add item to cart");
+      console.error("Error adding to cart:", err);
+    } finally {
+      setAddingToCart(null);
+    }
+  };
+
+  const addAllToCart = async () => {
+    try {
+      await Promise.all(wishlistItems.map(item => addToCart(item.id)));
+      setWishlistItems([]);
+    } catch (err) {
+      setError("Failed to add all items to cart");
+      console.error("Error adding all to cart:", err);
+    }
+  };
 
   if (!isSignedIn) {
     return (
-      <div className="flex justify-center items-center h-screen">
-        <h1 className="text-2xl">Please sign in to view your wishlist</h1>
+      <div className="min-h-screen flex flex-col">
+        <Navbar />
+        <main className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <h1 className="text-2xl font-semibold mb-4">Please sign in to view your wishlist</h1>
+            <button
+              onClick={() => router.push("/sign-in")}
+              className="bg-black text-white px-6 py-2 rounded-md hover:bg-gray-800"
+            >
+              Sign In
+            </button>
+          </div>
+        </main>
+        <Footer />
       </div>
     );
   }
 
   if (loading) {
     return (
-      <div>
+      <div className="min-h-screen flex flex-col">
         <Navbar />
-        <div className="flex justify-center items-center h-[80vh]">
+        <main className="flex-1 flex items-center justify-center">
           <motion.div
-            animate={{
-              rotate: 360,
-            }}
-            transition={{
-              duration: 1.5,
-              repeat: Infinity,
-              ease: "linear",
-            }}
+            animate={{ rotate: 360 }}
+            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
           >
-            <Image src={logo} alt="Loading..." width={60} height={60} />
+            <Image
+              src="/logo.png"
+              alt="Loading..."
+              width={50}
+              height={50}
+              className="animate-spin"
+            />
           </motion.div>
-        </div>
+        </main>
         <Footer />
       </div>
     );
   }
 
-  if (!wishlistProducts.length) {
-    return (
-      <div className="flex justify-center items-center h-screen">
-        <h1 className="text-2xl">Your wishlist is empty</h1>
-      </div>
-    );
-  }
-
   return (
-    <div>
+    <div className="min-h-screen flex flex-col">
       <Navbar />
-      {alert.show && (
-        <Alert
-          message={alert.message}
-          type={alert.type}
-          onClose={hideAlert}
-        />
-      )}
-      <div className="p-4">
-        <div className="mt-6 ml-4 xl:ml-32">
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <BreadcrumbLink href="/">Home</BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <BreadcrumbPage>Wishlist</BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
+      <main className="flex-1 container mx-auto px-4 py-8">
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold">Wishlist</h1>
+          {wishlistItems.length > 0 && (
+            <button
+              onClick={addAllToCart}
+              className="bg-black text-white px-6 py-2 rounded-md hover:bg-gray-800 flex items-center gap-2"
+            >
+              <ShoppingBag className="w-5 h-5" />
+              Add All to Cart
+            </button>
+          )}
         </div>
-        <div className="flex flex-col xl:flex-col xl:justify-between xl:w-[1170px] w-full xl:ml-28 mt-8">
-          <div className="flex flex-col xl:flex-row xl:justify-between">
-            <div>
-              <h1 className="p-5">Wishlist ({wishlistProducts.length})</h1>
-            </div>
-            <div>
-              <button
-                className={`w-full xl:w-[223px] h-[56px] text-center border border-black ${
-                  updatingCart ? "opacity-50 cursor-not-allowed" : ""
-                }`}
-                onClick={handleBag}
-                disabled={updatingCart}
-              >
-                {updatingCart ? "Moving to cart..." : "Move All to bag"}
-              </button>
-            </div>
-          </div>
 
-          <div className="flex flex-col xl:flex-row gap-x-5 w-full mt-7">
-            {wishlistProducts.map((product) => (
-              <Card
-                key={product._id}
-                id={product._id}
-                src={product.image}
-                productName={product.name}
-                productPrice={product.price}
-                cancelledPrice={product.price * 1.2}
-                status={product.status || "new"}
-              />
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+            {error}
+          </div>
+        )}
+
+        {wishlistItems.length === 0 ? (
+          <div className="text-center py-12">
+            <Heart className="w-16 h-16 mx-auto text-gray-400 mb-4" />
+            <h2 className="text-xl mb-4">Your wishlist is empty</h2>
+            <button
+              onClick={() => router.push("/Products")}
+              className="bg-black text-white px-6 py-2 rounded-md hover:bg-gray-800"
+            >
+              Browse Products
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {wishlistItems.map((item) => (
+              <div
+                key={item.id}
+                className="group relative bg-white rounded-lg shadow-sm overflow-hidden"
+              >
+                <div className="relative aspect-square">
+                  <Image
+                    src={item.image}
+                    alt={item.name}
+                    fill
+                    className="object-cover"
+                  />
+                </div>
+                <div className="p-4">
+                  <h3 className="font-medium mb-2">{item.name}</h3>
+                  <p className="text-gray-600 mb-4">${item.price.toFixed(2)}</p>
+                  <div className="flex justify-between items-center">
+                    <button
+                      onClick={() => addToCart(item.id)}
+                      disabled={addingToCart === item.id}
+                      className="bg-black text-white px-4 py-2 rounded-md hover:bg-gray-800 flex items-center gap-2 disabled:opacity-50"
+                    >
+                      <ShoppingBag className="w-4 h-4" />
+                      {addingToCart === item.id ? "Adding..." : "Add to Cart"}
+                    </button>
+                    <button
+                      onClick={() => removeFromWishlist(item.id)}
+                      className="p-2 text-gray-500 hover:text-red-500"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
             ))}
           </div>
-        </div>
-      </div>
+        )}
+      </main>
       <Footer />
     </div>
   );
 };
 
-export default Wishlist;
+export default WishlistPage;

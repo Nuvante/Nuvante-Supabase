@@ -1,75 +1,163 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "@clerk/nextjs/server";
-import supabase from "@/lib/supabase";
+import { createClient } from "@supabase/supabase-js";
 
-function popElement(array: any[], victim: any) {
-  return array.filter((element) => element !== victim);
-}
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
-export async function POST(request: any) {
-  const user = await currentUser();
-  
-  if (!user) {
-    console.log("No active session found");
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-  }
-
+export async function GET() {
   try {
-    const body = await request.json();
+    const user = await currentUser();
+    if (!user) {
+      return new NextResponse("Unauthorized", { status: 401 });
+    }
 
-    // Fetch current client data
-    const { data: existingClient, error: fetchError } = await supabase
-      .from("clients")
+    const { data: client, error: clientError } = await supabase
+      .from("client")
       .select("wishlist")
       .eq("clerk_id", user.id)
       .single();
 
-    if (fetchError) {
-      console.error("Error fetching client data:", fetchError);
-      return NextResponse.json(
-        { message: "Failed to fetch wishlist", error: fetchError.message },
-        { status: 500 }
-      );
+    if (clientError) {
+      console.error("Error fetching wishlist:", clientError);
+      return new NextResponse("Error fetching wishlist", { status: 500 });
     }
 
-    let updatedWishlist = existingClient?.wishlist || [];
-
-    if (body.append) {
-      // Add identifier only if it doesn't exist
-      if (!updatedWishlist.includes(body.identifier)) {
-        updatedWishlist.push(body.identifier);
-      }
-    } else {
-      // Remove identifier
-      updatedWishlist = popElement(updatedWishlist, body.identifier);
+    if (!client?.wishlist) {
+      return new NextResponse(JSON.stringify([]), { status: 200 });
     }
+
+    // Fetch product details for each item in wishlist
+    const wishlistItems = await Promise.all(
+      client.wishlist.map(async (itemId: string) => {
+        const { data: product, error: productError } = await supabase
+          .from("product")
+          .select("*")
+          .eq("id", itemId)
+          .single();
+
+        if (productError) {
+          console.error("Error fetching product:", productError);
+          return null;
+        }
+
+        return {
+          id: product.id,
+          name: product.product_name,
+          price: product.product_price,
+          image: product.product_images[0],
+        };
+      })
+    );
+
+    const validWishlistItems = wishlistItems.filter((item): item is NonNullable<typeof item> => item !== null);
+
+    return new NextResponse(JSON.stringify(validWishlistItems), { status: 200 });
+  } catch (error) {
+    console.error("Error in GET /api/wishlist:", error);
+    return new NextResponse("Internal Server Error", { status: 500 });
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const user = await currentUser();
+    if (!user) {
+      return new NextResponse("Unauthorized", { status: 401 });
+    }
+
+    const body = await request.json();
+    const { itemId } = body;
+
+    if (!itemId) {
+      return new NextResponse("Item ID is required", { status: 400 });
+    }
+
+    // Get current wishlist
+    const { data: client, error: clientError } = await supabase
+      .from("client")
+      .select("wishlist")
+      .eq("clerk_id", user.id)
+      .single();
+
+    if (clientError) {
+      console.error("Error fetching client:", clientError);
+      return new NextResponse("Error fetching client data", { status: 500 });
+    }
+
+    const currentWishlist = client?.wishlist || [];
+    
+    // Check if item already exists in wishlist
+    if (currentWishlist.includes(itemId)) {
+      return new NextResponse("Item already in wishlist", { status: 400 });
+    }
+
+    // Add item to wishlist
+    currentWishlist.push(itemId);
 
     // Update wishlist in database
     const { error: updateError } = await supabase
-      .from("clients")
-      .update({ 
-        wishlist: updatedWishlist,
-        updated_at: new Date().toISOString()
-      })
+      .from("client")
+      .update({ wishlist: currentWishlist })
       .eq("clerk_id", user.id);
 
     if (updateError) {
       console.error("Error updating wishlist:", updateError);
-      return NextResponse.json(
-        { message: "Failed to update wishlist", error: updateError.message },
-        { status: 500 }
-      );
+      return new NextResponse("Error updating wishlist", { status: 500 });
     }
 
-    return NextResponse.json(
-      { message: "Wishlist updated", wishlist: updatedWishlist },
-      { status: 200 }
-    );
-  } catch (error: any) {
-    console.error("Error in wishlist route:", error);
-    return NextResponse.json(
-      { message: "Bad Request", error: error.message },
-      { status: 400 }
-    );
+    return new NextResponse("Item added to wishlist", { status: 200 });
+  } catch (error) {
+    console.error("Error in POST /api/wishlist:", error);
+    return new NextResponse("Internal Server Error", { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const user = await currentUser();
+    if (!user) {
+      return new NextResponse("Unauthorized", { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const itemId = searchParams.get("itemId");
+
+    if (!itemId) {
+      return new NextResponse("Item ID is required", { status: 400 });
+    }
+
+    // Get current wishlist
+    const { data: client, error: clientError } = await supabase
+      .from("client")
+      .select("wishlist")
+      .eq("clerk_id", user.id)
+      .single();
+
+    if (clientError) {
+      console.error("Error fetching client:", clientError);
+      return new NextResponse("Error fetching client data", { status: 500 });
+    }
+
+    const currentWishlist = client?.wishlist || [];
+    const updatedWishlist = currentWishlist.filter((id: string) => id !== itemId);
+
+    // Update wishlist in database
+    const { error: updateError } = await supabase
+      .from("client")
+      .update({ wishlist: updatedWishlist })
+      .eq("clerk_id", user.id);
+
+    if (updateError) {
+      console.error("Error updating wishlist:", updateError);
+      return new NextResponse("Error updating wishlist", { status: 500 });
+    }
+
+    return new NextResponse("Item removed from wishlist", { status: 200 });
+  } catch (error) {
+    console.error("Error in DELETE /api/wishlist:", error);
+    return new NextResponse("Internal Server Error", { status: 500 });
   }
 }
