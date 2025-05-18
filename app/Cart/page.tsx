@@ -2,19 +2,19 @@
 
 import React, { useState, useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
-import axios from "axios";
 import Image from "next/image";
 import { motion } from "framer-motion";
 import { Minus, Plus, Trash2 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { useRouter } from "next/navigation";
+import axiosInstance from "@/lib/axios";
 
 interface CartItem {
   id: string;
-  name: string;
-  price: number;
-  image: string;
+  product_name: string;
+  product_price: number;
+  product_images: string[];
   quantity: number;
 }
 
@@ -33,7 +33,7 @@ const CartPage = () => {
 
   const fetchCartItems = async () => {
     try {
-      const response = await axios.get("/api/cart");
+      const response = await axiosInstance.get("/cart");
       if (response.status === 200) {
         setCartItems(response.data as CartItem[]);
       }
@@ -49,7 +49,7 @@ const CartPage = () => {
     if (newQuantity < 1) return;
 
     try {
-      await axios.put("/api/cart", {
+      await axiosInstance.put("/cart", {
         itemId,
         quantity: newQuantity,
       });
@@ -67,7 +67,7 @@ const CartPage = () => {
 
   const removeItem = async (itemId: string) => {
     try {
-      await axios.delete(`/api/cart/${itemId}`);
+      await axiosInstance.delete(`/cart/${itemId}`);
       setCartItems(prevItems => prevItems.filter(item => item.id !== itemId));
     } catch (err) {
       setError("Failed to remove item");
@@ -76,7 +76,7 @@ const CartPage = () => {
   };
 
   const calculateTotal = () => {
-    return cartItems.reduce((total, item) => total + item.price * item.quantity, 0);
+    return cartItems.reduce((total, item) => total + item.product_price * item.quantity, 0);
   };
 
   if (!isSignedIn) {
@@ -154,15 +154,15 @@ const CartPage = () => {
                 >
                   <div className="relative w-24 h-24 flex-shrink-0">
                     <Image
-                      src={item.image}
-                      alt={item.name}
+                      src={item.product_images[0]}
+                      alt={item.product_name}
                       fill
                       className="object-cover rounded-md"
                     />
                   </div>
                   <div className="flex-1">
-                    <h3 className="font-medium">{item.name}</h3>
-                    <p className="text-gray-600">${item.price.toFixed(2)}</p>
+                    <h3 className="font-medium">{item.product_name}</h3>
+                    <p className="text-gray-600">${item.product_price.toFixed(2)}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <button

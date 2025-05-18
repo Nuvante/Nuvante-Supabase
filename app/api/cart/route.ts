@@ -11,7 +11,7 @@ export async function GET() {
   try {
     const user = await currentUser();
     if (!user) {
-      return new NextResponse("Unauthorized", { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { data: client, error: clientError } = await supabase
@@ -22,11 +22,11 @@ export async function GET() {
 
     if (clientError) {
       console.error("Error fetching cart:", clientError);
-      return new NextResponse("Error fetching cart", { status: 500 });
+      return NextResponse.json({ error: "Failed to fetch cart" }, { status: 500 });
     }
 
     if (!client?.cart) {
-      return new NextResponse(JSON.stringify([]), { status: 200 });
+      return NextResponse.json([], { status: 200 });
     }
 
     // Fetch product details for each item in cart
@@ -45,9 +45,9 @@ export async function GET() {
 
         return {
           id: product.id,
-          name: product.product_name,
-          price: product.product_price,
-          image: product.product_images[0],
+          product_name: product.product_name,
+          product_price: product.product_price,
+          product_images: product.product_images,
           quantity: item.quantity,
         };
       })
@@ -55,10 +55,10 @@ export async function GET() {
 
     const validCartItems = cartItems.filter((item): item is NonNullable<typeof item> => item !== null);
 
-    return new NextResponse(JSON.stringify(validCartItems), { status: 200 });
+    return NextResponse.json(validCartItems, { status: 200 });
   } catch (error) {
     console.error("Error in GET /api/cart:", error);
-    return new NextResponse("Internal Server Error", { status: 500 });
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
 
@@ -66,14 +66,14 @@ export async function POST(request: Request) {
   try {
     const user = await currentUser();
     if (!user) {
-      return new NextResponse("Unauthorized", { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = await request.json();
     const { itemId } = body;
 
     if (!itemId) {
-      return new NextResponse("Item ID is required", { status: 400 });
+      return NextResponse.json({ error: "Item ID is required" }, { status: 400 });
     }
 
     // Get current cart
@@ -85,7 +85,7 @@ export async function POST(request: Request) {
 
     if (clientError) {
       console.error("Error fetching client:", clientError);
-      return new NextResponse("Error fetching client data", { status: 500 });
+      return NextResponse.json({ error: "Failed to fetch client data" }, { status: 500 });
     }
 
     const currentCart = client?.cart || [];
@@ -107,13 +107,13 @@ export async function POST(request: Request) {
 
     if (updateError) {
       console.error("Error updating cart:", updateError);
-      return new NextResponse("Error updating cart", { status: 500 });
+      return NextResponse.json({ error: "Failed to update cart" }, { status: 500 });
     }
 
-    return new NextResponse("Cart updated successfully", { status: 200 });
+    return NextResponse.json({ message: "Cart updated successfully" }, { status: 200 });
   } catch (error) {
     console.error("Error in POST /api/cart:", error);
-    return new NextResponse("Internal Server Error", { status: 500 });
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
 
@@ -121,14 +121,18 @@ export async function PUT(request: Request) {
   try {
     const user = await currentUser();
     if (!user) {
-      return new NextResponse("Unauthorized", { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = await request.json();
     const { itemId, quantity } = body;
 
     if (!itemId || quantity === undefined) {
-      return new NextResponse("Item ID and quantity are required", { status: 400 });
+      return NextResponse.json({ error: "Item ID and quantity are required" }, { status: 400 });
+    }
+
+    if (quantity < 1) {
+      return NextResponse.json({ error: "Quantity must be at least 1" }, { status: 400 });
     }
 
     // Get current cart
@@ -140,14 +144,14 @@ export async function PUT(request: Request) {
 
     if (clientError) {
       console.error("Error fetching client:", clientError);
-      return new NextResponse("Error fetching client data", { status: 500 });
+      return NextResponse.json({ error: "Failed to fetch client data" }, { status: 500 });
     }
 
     const currentCart = client?.cart || [];
     const existingItemIndex = currentCart.findIndex((item: { id: string }) => item.id === itemId);
 
     if (existingItemIndex === -1) {
-      return new NextResponse("Item not found in cart", { status: 404 });
+      return NextResponse.json({ error: "Item not found in cart" }, { status: 404 });
     }
 
     // Update quantity
@@ -161,13 +165,13 @@ export async function PUT(request: Request) {
 
     if (updateError) {
       console.error("Error updating cart:", updateError);
-      return new NextResponse("Error updating cart", { status: 500 });
+      return NextResponse.json({ error: "Failed to update cart" }, { status: 500 });
     }
 
-    return new NextResponse("Cart updated successfully", { status: 200 });
+    return NextResponse.json({ message: "Cart updated successfully" }, { status: 200 });
   } catch (error) {
     console.error("Error in PUT /api/cart:", error);
-    return new NextResponse("Internal Server Error", { status: 500 });
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
 
@@ -175,14 +179,14 @@ export async function DELETE(request: Request) {
   try {
     const user = await currentUser();
     if (!user) {
-      return new NextResponse("Unauthorized", { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);
     const itemId = searchParams.get("itemId");
 
     if (!itemId) {
-      return new NextResponse("Item ID is required", { status: 400 });
+      return NextResponse.json({ error: "Item ID is required" }, { status: 400 });
     }
 
     // Get current cart
@@ -194,7 +198,7 @@ export async function DELETE(request: Request) {
 
     if (clientError) {
       console.error("Error fetching client:", clientError);
-      return new NextResponse("Error fetching client data", { status: 500 });
+      return NextResponse.json({ error: "Failed to fetch client data" }, { status: 500 });
     }
 
     const currentCart = client?.cart || [];
@@ -208,12 +212,12 @@ export async function DELETE(request: Request) {
 
     if (updateError) {
       console.error("Error updating cart:", updateError);
-      return new NextResponse("Error updating cart", { status: 500 });
+      return NextResponse.json({ error: "Failed to update cart" }, { status: 500 });
     }
 
-    return new NextResponse("Item removed from cart", { status: 200 });
+    return NextResponse.json({ message: "Item removed from cart" }, { status: 200 });
   } catch (error) {
     console.error("Error in DELETE /api/cart:", error);
-    return new NextResponse("Internal Server Error", { status: 500 });
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

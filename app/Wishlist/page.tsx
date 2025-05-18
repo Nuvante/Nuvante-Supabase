@@ -2,19 +2,19 @@
 
 import React, { useState, useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
-import axios from "axios";
 import Image from "next/image";
 import { motion } from "framer-motion";
 import { Heart, ShoppingBag, Trash2 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { useRouter } from "next/navigation";
+import axiosInstance from "@/lib/axios";
 
 interface WishlistItem {
   id: string;
-  name: string;
-  price: number;
-  image: string;
+  product_name: string;
+  product_price: number;
+  product_images: string[];
 }
 
 const WishlistPage = () => {
@@ -33,7 +33,7 @@ const WishlistPage = () => {
 
   const fetchWishlistItems = async () => {
     try {
-      const response = await axios.get("/api/wishlist");
+      const response = await axiosInstance.get("/wishlist");
       if (response.status === 200) {
         setWishlistItems(response.data as WishlistItem[]);
       }
@@ -47,7 +47,7 @@ const WishlistPage = () => {
 
   const removeFromWishlist = async (itemId: string) => {
     try {
-      await axios.delete(`/api/wishlist/${itemId}`);
+      await axiosInstance.delete(`/wishlist/${itemId}`);
       setWishlistItems(prevItems => prevItems.filter(item => item.id !== itemId));
     } catch (err) {
       setError("Failed to remove item from wishlist");
@@ -58,7 +58,7 @@ const WishlistPage = () => {
   const addToCart = async (itemId: string) => {
     setAddingToCart(itemId);
     try {
-      await axios.post("/api/cart", { itemId });
+      await axiosInstance.post("/cart", { itemId });
       await removeFromWishlist(itemId);
     } catch (err) {
       setError("Failed to add item to cart");
@@ -164,15 +164,15 @@ const WishlistPage = () => {
               >
                 <div className="relative aspect-square">
                   <Image
-                    src={item.image}
-                    alt={item.name}
+                    src={item.product_images[0]}
+                    alt={item.product_name}
                     fill
                     className="object-cover"
                   />
                 </div>
                 <div className="p-4">
-                  <h3 className="font-medium mb-2">{item.name}</h3>
-                  <p className="text-gray-600 mb-4">${item.price.toFixed(2)}</p>
+                  <h3 className="font-medium mb-2">{item.product_name}</h3>
+                  <p className="text-gray-600 mb-4">${item.product_price.toFixed(2)}</p>
                   <div className="flex justify-between items-center">
                     <button
                       onClick={() => addToCart(item.id)}

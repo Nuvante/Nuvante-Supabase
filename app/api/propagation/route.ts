@@ -18,7 +18,6 @@ async function handlePublicRoutes({ id, every }: { id?: string; every?: boolean 
 
   // Handle fetching a single product
   if (id && !every) {
-    console.log("Fetching single product with ID:", id);
     const { data: product, error: productError } = await supabase
       .from("products")
       .select(`
@@ -39,15 +38,14 @@ async function handlePublicRoutes({ id, every }: { id?: string; every?: boolean 
       .single();
 
     if (productError) {
-      console.error("Error fetching product:", productError);
+      console.error("Error fetching product");
       return NextResponse.json(
-        { error: "Failed to fetch product", details: productError.message },
+        { error: "Failed to fetch product" },
         { status: 500, headers }
       );
     }
 
     if (!product) {
-      console.log("No product found with ID:", id);
       return NextResponse.json(
         { error: "Product not found" },
         { status: 404, headers }
@@ -59,7 +57,6 @@ async function handlePublicRoutes({ id, every }: { id?: string; every?: boolean 
 
   // Handle fetching all products
   if (every) {
-    console.log("Fetching all products");
     const { data: products, error: productsError } = await supabase
       .from("products")
       .select(`
@@ -78,9 +75,9 @@ async function handlePublicRoutes({ id, every }: { id?: string; every?: boolean 
       `);
 
     if (productsError) {
-      console.error("Error fetching products:", productsError);
+      console.error("Error fetching products");
       return NextResponse.json(
-        { error: "Failed to fetch products", details: productsError.message },
+        { error: "Failed to fetch products" },
         { status: 500, headers }
       );
     }
@@ -102,7 +99,7 @@ export async function POST(request: Request) {
     const user = await currentUser();
     if (!user) {
       return NextResponse.json(
-        { error: "User not authenticated" },
+        { error: "Unauthorized" },
         { status: 401 }
       );
     }
@@ -115,8 +112,6 @@ export async function POST(request: Request) {
     // Handle protected routes
     switch (type) {
       case "wishlist":
-        console.log("Fetching wishlist for user:", user.id);
-        
         const { data: wishlistData, error: wishlistError } = await supabase
           .from("clients")
           .select("wishlist")
@@ -124,35 +119,18 @@ export async function POST(request: Request) {
           .single();
 
         if (wishlistError) {
-          console.error("Error fetching wishlist:", wishlistError);
-          console.error("Error details:", {
-            message: wishlistError.message,
-            code: wishlistError.code,
-            details: wishlistError.details
-          });
+          console.error("Error fetching wishlist");
           return NextResponse.json(
-            { error: "Failed to fetch wishlist", details: wishlistError.message },
+            { error: "Failed to fetch wishlist" },
             { status: 500, headers }
           );
         }
 
-        if (!wishlistData) {
-          console.log("No wishlist data found for user");
+        if (!wishlistData || !wishlistData.wishlist?.length) {
           return NextResponse.json([], { status: 200, headers });
         }
 
-        console.log("Wishlist data from clients table:", wishlistData);
-
-        if (!wishlistData.wishlist?.length) {
-          console.log("Wishlist is empty");
-          return NextResponse.json([], { status: 200, headers });
-        }
-
-        // First, get the product IDs from the wishlist
-        const wishlistProductIds = wishlistData.wishlist;
-        console.log("Product IDs to fetch:", wishlistProductIds);
-
-        // Then fetch the complete product data
+        // Fetch the complete product data
         const { data: wishlistProducts, error: productsError } = await supabase
           .from("products")
           .select(`
@@ -169,47 +147,34 @@ export async function POST(request: Request) {
             product_info,
             type
           `)
-          .in("id", wishlistProductIds);
+          .in("id", wishlistData.wishlist);
 
         if (productsError) {
-          console.error("Error fetching wishlist products:", productsError);
+          console.error("Error fetching wishlist products");
           return NextResponse.json(
-            { error: "Failed to fetch wishlist products", details: productsError.message },
+            { error: "Failed to fetch wishlist products" },
             { status: 500, headers }
           );
         }
 
-        console.log("Raw wishlist products from database:", wishlistProducts);
-
         if (!wishlistProducts || wishlistProducts.length === 0) {
-          console.log("No products found for the given IDs");
           return NextResponse.json([], { status: 200, headers });
         }
 
         // Transform the data to match the expected format
-        const transformedProducts = wishlistProducts.map(product => {
-          if (!product.product_name || !product.product_price || !product.product_images) {
-            console.warn("Incomplete product data:", product);
-          }
-          
-          // Get the first image from the product_images array (since it's a JSONB array)
-          const primaryImage = Array.isArray(product.product_images) && product.product_images.length > 0
+        const transformedProducts = wishlistProducts.map(product => ({
+          _id: product.id,
+          name: product.product_name || "Unknown Product",
+          price: product.product_price || 0,
+          image: Array.isArray(product.product_images) && product.product_images.length > 0
             ? product.product_images[0]
-            : "/placeholder.png";
+            : "/placeholder.png",
+          status: product.latest ? "new" : "regular",
+          description: product.description || "",
+          materials: product.materials || "",
+          cancelled_price: product.cancelled_product_price || 0
+        }));
 
-          return {
-            _id: product.id,
-            name: product.product_name || "Unknown Product",
-            price: product.product_price || 0,
-            image: primaryImage,
-            status: product.latest ? "new" : "regular",
-            description: product.description || "",
-            materials: product.materials || "",
-            cancelled_price: product.cancelled_product_price || 0
-          };
-        });
-
-        console.log("Transformed products:", transformedProducts);
         return NextResponse.json(transformedProducts, { status: 200, headers });
 
       case "cart":
@@ -220,7 +185,7 @@ export async function POST(request: Request) {
           .single();
 
         if (cartError) {
-          console.error("Error fetching cart:", cartError);
+          console.error("Error fetching cart");
           return NextResponse.json(
             { error: "Failed to fetch cart" },
             { status: 500, headers }
@@ -237,7 +202,7 @@ export async function POST(request: Request) {
           .in("id", cartData.cart);
 
         if (cartProductsError) {
-          console.error("Error fetching cart products:", cartProductsError);
+          console.error("Error fetching cart products");
           return NextResponse.json(
             { error: "Failed to fetch cart products" },
             { status: 500, headers }
@@ -504,7 +469,7 @@ export async function POST(request: Request) {
         );
     }
   } catch (error) {
-    console.error("Error in propagation route:", error);
+    console.error("Internal server error occurred");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

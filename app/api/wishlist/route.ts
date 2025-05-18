@@ -11,7 +11,7 @@ export async function GET() {
   try {
     const user = await currentUser();
     if (!user) {
-      return new NextResponse("Unauthorized", { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { data: client, error: clientError } = await supabase
@@ -22,11 +22,11 @@ export async function GET() {
 
     if (clientError) {
       console.error("Error fetching wishlist:", clientError);
-      return new NextResponse("Error fetching wishlist", { status: 500 });
+      return NextResponse.json({ error: "Failed to fetch wishlist" }, { status: 500 });
     }
 
     if (!client?.wishlist) {
-      return new NextResponse(JSON.stringify([]), { status: 200 });
+      return NextResponse.json([], { status: 200 });
     }
 
     // Fetch product details for each item in wishlist
@@ -45,19 +45,19 @@ export async function GET() {
 
         return {
           id: product.id,
-          name: product.product_name,
-          price: product.product_price,
-          image: product.product_images[0],
+          product_name: product.product_name,
+          product_price: product.product_price,
+          product_images: product.product_images,
         };
       })
     );
 
     const validWishlistItems = wishlistItems.filter((item): item is NonNullable<typeof item> => item !== null);
 
-    return new NextResponse(JSON.stringify(validWishlistItems), { status: 200 });
+    return NextResponse.json(validWishlistItems, { status: 200 });
   } catch (error) {
     console.error("Error in GET /api/wishlist:", error);
-    return new NextResponse("Internal Server Error", { status: 500 });
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
 
@@ -65,14 +65,14 @@ export async function POST(request: Request) {
   try {
     const user = await currentUser();
     if (!user) {
-      return new NextResponse("Unauthorized", { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = await request.json();
     const { itemId } = body;
 
     if (!itemId) {
-      return new NextResponse("Item ID is required", { status: 400 });
+      return NextResponse.json({ error: "Item ID is required" }, { status: 400 });
     }
 
     // Get current wishlist
@@ -84,14 +84,14 @@ export async function POST(request: Request) {
 
     if (clientError) {
       console.error("Error fetching client:", clientError);
-      return new NextResponse("Error fetching client data", { status: 500 });
+      return NextResponse.json({ error: "Failed to fetch client data" }, { status: 500 });
     }
 
     const currentWishlist = client?.wishlist || [];
     
     // Check if item already exists in wishlist
     if (currentWishlist.includes(itemId)) {
-      return new NextResponse("Item already in wishlist", { status: 400 });
+      return NextResponse.json({ error: "Item already in wishlist" }, { status: 400 });
     }
 
     // Add item to wishlist
@@ -105,13 +105,13 @@ export async function POST(request: Request) {
 
     if (updateError) {
       console.error("Error updating wishlist:", updateError);
-      return new NextResponse("Error updating wishlist", { status: 500 });
+      return NextResponse.json({ error: "Failed to update wishlist" }, { status: 500 });
     }
 
-    return new NextResponse("Item added to wishlist", { status: 200 });
+    return NextResponse.json({ message: "Item added to wishlist" }, { status: 200 });
   } catch (error) {
     console.error("Error in POST /api/wishlist:", error);
-    return new NextResponse("Internal Server Error", { status: 500 });
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
 
@@ -119,14 +119,14 @@ export async function DELETE(request: Request) {
   try {
     const user = await currentUser();
     if (!user) {
-      return new NextResponse("Unauthorized", { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);
     const itemId = searchParams.get("itemId");
 
     if (!itemId) {
-      return new NextResponse("Item ID is required", { status: 400 });
+      return NextResponse.json({ error: "Item ID is required" }, { status: 400 });
     }
 
     // Get current wishlist
@@ -138,7 +138,7 @@ export async function DELETE(request: Request) {
 
     if (clientError) {
       console.error("Error fetching client:", clientError);
-      return new NextResponse("Error fetching client data", { status: 500 });
+      return NextResponse.json({ error: "Failed to fetch client data" }, { status: 500 });
     }
 
     const currentWishlist = client?.wishlist || [];
@@ -152,12 +152,12 @@ export async function DELETE(request: Request) {
 
     if (updateError) {
       console.error("Error updating wishlist:", updateError);
-      return new NextResponse("Error updating wishlist", { status: 500 });
+      return NextResponse.json({ error: "Failed to update wishlist" }, { status: 500 });
     }
 
-    return new NextResponse("Item removed from wishlist", { status: 200 });
+    return NextResponse.json({ message: "Item removed from wishlist" }, { status: 200 });
   } catch (error) {
     console.error("Error in DELETE /api/wishlist:", error);
-    return new NextResponse("Internal Server Error", { status: 500 });
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
