@@ -12,7 +12,7 @@ export async function GET() {
 
   try {
     const { data: clientData, error } = await supabase
-      .from("clients")
+      .from("client")
       .select("*")
       .eq("email", global_user_email)
       .maybeSingle();
@@ -31,8 +31,11 @@ export async function GET() {
       firstName: clientData.first_name || "",
       lastName: clientData.last_name || "",
       address: clientData.address || "",
-      wishlist: clientData.wishlist || [],
-      cart: clientData.cart || [],
+      wishlist: clientData.wishlist?.map((item: { id: string }) => item.id) || [],
+      cart: clientData.cart?.map((item: { id: string; quantity: number }) => ({
+        id: item.id,
+        quantity: item.quantity
+      })) || [],
     };
 
     return NextResponse.json(response, { status: 200 });

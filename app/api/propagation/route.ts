@@ -113,7 +113,7 @@ export async function POST(request: Request) {
     switch (type) {
       case "wishlist":
         const { data: wishlistData, error: wishlistError } = await supabase
-          .from("clients")
+          .from("client")
           .select("wishlist")
           .eq("clerk_id", user.id)
           .single();
@@ -132,7 +132,7 @@ export async function POST(request: Request) {
 
         // Fetch the complete product data
         const { data: wishlistProducts, error: productsError } = await supabase
-          .from("products")
+          .from("product")
           .select(`
             id,
             product_name,
@@ -147,7 +147,7 @@ export async function POST(request: Request) {
             product_info,
             type
           `)
-          .in("id", wishlistData.wishlist);
+          .in("id", wishlistData.wishlist.map((item: { id: string }) => item.id));
 
         if (productsError) {
           console.error("Error fetching wishlist products");
@@ -179,7 +179,7 @@ export async function POST(request: Request) {
 
       case "cart":
         const { data: cartData, error: cartError } = await supabase
-          .from("clients")
+          .from("client")
           .select("cart")
           .eq("clerk_id", user.id)
           .single();
@@ -197,9 +197,9 @@ export async function POST(request: Request) {
         }
 
         const { data: cartProducts, error: cartProductsError } = await supabase
-          .from("products")
+          .from("product")
           .select("*")
-          .in("id", cartData.cart);
+          .in("id", cartData.cart.map((item: { id: string }) => item.id));
 
         if (cartProductsError) {
           console.error("Error fetching cart products");
@@ -220,7 +220,7 @@ export async function POST(request: Request) {
         }
 
         const { data: clientData, error: clientError } = await supabase
-          .from("clients")
+          .from("client")
           .select("wishlist")
           .eq("clerk_id", user.id)
           .single();
@@ -234,7 +234,7 @@ export async function POST(request: Request) {
         }
 
         const currentWishlist = clientData?.wishlist || [];
-        if (currentWishlist.includes(productId)) {
+        if (currentWishlist.some((item: { id: string }) => item.id === productId)) {
           return NextResponse.json(
             { message: "Product already in wishlist" },
             { status: 200, headers }
@@ -242,9 +242,9 @@ export async function POST(request: Request) {
         }
 
         const { error: updateError } = await supabase
-          .from("clients")
+          .from("client")
           .update({
-            wishlist: [...currentWishlist, productId],
+            wishlist: [...currentWishlist, { id: productId }],
             updated_at: new Date().toISOString(),
           })
           .eq("clerk_id", user.id);
@@ -271,7 +271,7 @@ export async function POST(request: Request) {
         }
 
         const { data: clientWishlist, error: clientWishlistError } = await supabase
-          .from("clients")
+          .from("client")
           .select("wishlist")
           .eq("clerk_id", user.id)
           .single();
@@ -285,11 +285,11 @@ export async function POST(request: Request) {
         }
 
         const updatedWishlist = (clientWishlist?.wishlist || []).filter(
-          (id: string) => id !== productId
+          (item: { id: string }) => item.id !== productId
         );
 
         const { error: removeError } = await supabase
-          .from("clients")
+          .from("client")
           .update({
             wishlist: updatedWishlist,
             updated_at: new Date().toISOString(),

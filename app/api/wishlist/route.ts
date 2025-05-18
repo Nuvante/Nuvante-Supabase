@@ -7,6 +7,10 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+type WishlistItem = {
+  id: string; // UUID from product table
+};
+
 export async function GET() {
   try {
     const user = await currentUser();
@@ -31,11 +35,11 @@ export async function GET() {
 
     // Fetch product details for each item in wishlist
     const wishlistItems = await Promise.all(
-      client.wishlist.map(async (itemId: string) => {
+      (client.wishlist as WishlistItem[]).map(async (item) => {
         const { data: product, error: productError } = await supabase
           .from("product")
           .select("*")
-          .eq("id", itemId)
+          .eq("id", item.id)
           .single();
 
         if (productError) {
@@ -53,7 +57,6 @@ export async function GET() {
     );
 
     const validWishlistItems = wishlistItems.filter((item): item is NonNullable<typeof item> => item !== null);
-
     return NextResponse.json(validWishlistItems, { status: 200 });
   } catch (error) {
     console.error("Error in GET /api/wishlist:", error);
@@ -87,15 +90,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Failed to fetch client data" }, { status: 500 });
     }
 
-    const currentWishlist = client?.wishlist || [];
-    
-    // Check if item already exists in wishlist
-    if (currentWishlist.includes(itemId)) {
+    const currentWishlist = (client?.wishlist as WishlistItem[]) || [];
+    const itemExists = currentWishlist.some((item) => item.id === itemId);
+
+    if (itemExists) {
       return NextResponse.json({ error: "Item already in wishlist" }, { status: 400 });
     }
 
-    // Add item to wishlist
-    currentWishlist.push(itemId);
+    // Add new item
+    currentWishlist.push({ id: itemId });
 
     // Update wishlist in database
     const { error: updateError } = await supabase
@@ -108,7 +111,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Failed to update wishlist" }, { status: 500 });
     }
 
-    return NextResponse.json({ message: "Item added to wishlist" }, { status: 200 });
+    return NextResponse.json(200, { status: 200 });
   } catch (error) {
     console.error("Error in POST /api/wishlist:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
@@ -141,8 +144,8 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Failed to fetch client data" }, { status: 500 });
     }
 
-    const currentWishlist = client?.wishlist || [];
-    const updatedWishlist = currentWishlist.filter((id: string) => id !== itemId);
+    const currentWishlist = (client?.wishlist as WishlistItem[]) || [];
+    const updatedWishlist = currentWishlist.filter((item) => item.id !== itemId);
 
     // Update wishlist in database
     const { error: updateError } = await supabase
@@ -155,7 +158,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Failed to update wishlist" }, { status: 500 });
     }
 
-    return NextResponse.json({ message: "Item removed from wishlist" }, { status: 200 });
+    return NextResponse.json(200, { status: 200 });
   } catch (error) {
     console.error("Error in DELETE /api/wishlist:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

@@ -23,8 +23,8 @@ interface ProfileResponse {
   firstName: string;
   lastName: string;
   address: string;
-  wishlist: string[];
-  cart: string[];
+  wishlist: { id: string }[];
+  cart: { id: string; quantity: number }[];
 }
 
 interface AlertState {

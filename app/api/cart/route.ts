@@ -7,6 +7,11 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+type CartItem = {
+  id: string; // UUID from product table
+  quantity: number;
+};
+
 export async function GET() {
   try {
     const user = await currentUser();
@@ -31,7 +36,7 @@ export async function GET() {
 
     // Fetch product details for each item in cart
     const cartItems = await Promise.all(
-      client.cart.map(async (item: { id: string; quantity: number }) => {
+      (client.cart as CartItem[]).map(async (item) => {
         const { data: product, error: productError } = await supabase
           .from("product")
           .select("*")
@@ -54,7 +59,6 @@ export async function GET() {
     );
 
     const validCartItems = cartItems.filter((item): item is NonNullable<typeof item> => item !== null);
-
     return NextResponse.json(validCartItems, { status: 200 });
   } catch (error) {
     console.error("Error in GET /api/cart:", error);
@@ -88,8 +92,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Failed to fetch client data" }, { status: 500 });
     }
 
-    const currentCart = client?.cart || [];
-    const existingItemIndex = currentCart.findIndex((item: { id: string }) => item.id === itemId);
+    const currentCart = (client?.cart as CartItem[]) || [];
+    const existingItemIndex = currentCart.findIndex((item) => item.id === itemId);
 
     if (existingItemIndex !== -1) {
       // Update quantity if item exists
@@ -110,7 +114,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Failed to update cart" }, { status: 500 });
     }
 
-    return NextResponse.json({ message: "Cart updated successfully" }, { status: 200 });
+    return NextResponse.json(200, { status: 200 });
   } catch (error) {
     console.error("Error in POST /api/cart:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
@@ -131,10 +135,6 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Item ID and quantity are required" }, { status: 400 });
     }
 
-    if (quantity < 1) {
-      return NextResponse.json({ error: "Quantity must be at least 1" }, { status: 400 });
-    }
-
     // Get current cart
     const { data: client, error: clientError } = await supabase
       .from("client")
@@ -147,8 +147,8 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Failed to fetch client data" }, { status: 500 });
     }
 
-    const currentCart = client?.cart || [];
-    const existingItemIndex = currentCart.findIndex((item: { id: string }) => item.id === itemId);
+    const currentCart = (client?.cart as CartItem[]) || [];
+    const existingItemIndex = currentCart.findIndex((item) => item.id === itemId);
 
     if (existingItemIndex === -1) {
       return NextResponse.json({ error: "Item not found in cart" }, { status: 404 });
@@ -168,7 +168,7 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Failed to update cart" }, { status: 500 });
     }
 
-    return NextResponse.json({ message: "Cart updated successfully" }, { status: 200 });
+    return NextResponse.json(200, { status: 200 });
   } catch (error) {
     console.error("Error in PUT /api/cart:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
@@ -201,8 +201,8 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Failed to fetch client data" }, { status: 500 });
     }
 
-    const currentCart = client?.cart || [];
-    const updatedCart = currentCart.filter((item: { id: string }) => item.id !== itemId);
+    const currentCart = (client?.cart as CartItem[]) || [];
+    const updatedCart = currentCart.filter((item) => item.id !== itemId);
 
     // Update cart in database
     const { error: updateError } = await supabase
@@ -215,7 +215,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Failed to update cart" }, { status: 500 });
     }
 
-    return NextResponse.json({ message: "Item removed from cart" }, { status: 200 });
+    return NextResponse.json(200, { status: 200 });
   } catch (error) {
     console.error("Error in DELETE /api/cart:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
