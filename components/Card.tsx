@@ -13,6 +13,12 @@ type propType = {
   productPrice: number;
   cancelledPrice: number;
   status: string;
+  description?: string;
+  materials?: string;
+  packaging?: string;
+  shipping?: string;
+  productInfo?: string;
+  type?: string;
 };
 
 const domain = process.env.NEXT_PUBLIC_DOMAIN;
@@ -66,7 +72,7 @@ export default function Card({
     }
 
     setLoadingWishlist(true);
-    const isPresent = GlobalWishlist.includes(id);
+    const isPresent = GlobalWishlist.some(item => item.id === id);
 
     try {
       const response = await axios.post("/api/propagation", {
@@ -103,7 +109,7 @@ export default function Card({
     }
 
     setLoadingCart(true);
-    const isPresent = GlobalCart.includes(id);
+    const isPresent = GlobalCart.some(item => item.id === id);
 
     try {
       const response = await axios.post("/api/propagation", {
@@ -111,8 +117,9 @@ export default function Card({
         productId: id,
       });
 
-      if (response.status === 200) {
-        await changeGlobalCart(id, !isPresent);
+      if (response.data === 200) {
+        await changeGlobalCart(id, isPresent ? 0 : 1);
+        setLoadingCart(false);
         showAlert(
           isPresent ? "Removed from cart" : "Added to cart",
           "success"
@@ -129,7 +136,7 @@ export default function Card({
   };
 
   // Check if the product is already in the wishlist
-  const isInWishlist = GlobalWishlist.includes(id);
+  const isInWishlist = GlobalWishlist.some(item => item.id === id);
 
   return (
     <>
@@ -191,7 +198,7 @@ export default function Card({
           >
             {loadingCart
               ? "⏳"
-              : GlobalCart.includes(id)
+              : GlobalCart.some(item => item.id === id)
               ? "Remove from cart"
               : "Add to cart"}
           </button>

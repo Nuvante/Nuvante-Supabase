@@ -186,15 +186,14 @@ const Preview = () => {
 
   const updateCart = async () => {
     if (!id) return;
-    const isPresent = GlobalCart.includes(id);
+    const isPresent = GlobalCart.some(item => item.id === id);
     try {
       const res = await axios.post(`/api/cart`, {
         identifier: id,
         append: !isPresent,
       });
       if (res.data === 200) {
-        // Update the global cart context with the correct signature
-        await changeGlobalCart(id, !isPresent);
+        await changeGlobalCart(id, isPresent ? 0 : 1);
         alert("Cart updated successfully!");
       }
     } catch (err) {
@@ -204,17 +203,14 @@ const Preview = () => {
 
   const updateWishlist = async () => {
     if (!id) return;
-    const isPresent = GlobalWishlist.includes(id);
+    const isPresent = GlobalWishlist.some(item => item.id === id);
     try {
       const res = await axios.post(`/api/wishlist`, {
         identifier: id,
         append: !isPresent,
       });
       if (res.data === 200) {
-        const updated = isPresent
-          ? GlobalWishlist.filter((item) => item !== id)
-          : [...GlobalWishlist, id];
-        changeGlobalWishlist(updated);
+        await changeGlobalWishlist(id, !isPresent);
         setLoaded(true);
       }
     } catch (err) {
