@@ -1,13 +1,12 @@
 import { NextResponse } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
-import { Database } from '@/src/types/supabase';
+import { currentUser } from '@clerk/nextjs/server';
+import supabase from '@/lib/supabase';
 
 interface WishlistItem {
   id: string;
   created_at: string;
   product_id: string;
-  products: {
+  product: {
     id: string;
     name: string;
     description: string;
@@ -21,22 +20,7 @@ interface WishlistItem {
 
 export async function GET() {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value;
-          },
-        },
-      }
-    );
-
-    // Get the current user
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError) throw userError;
+    const user = await currentUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -48,7 +32,7 @@ export async function GET() {
         id,
         created_at,
         product_id,
-        products (
+        product (
           id,
           name,
           description,
@@ -69,7 +53,7 @@ export async function GET() {
       id: item.id,
       createdAt: item.created_at,
       productId: item.product_id,
-      product: Array.isArray(item.products) ? item.products[0] : item.products
+      product: Array.isArray(item.product) ? item.product[0] : item.product
     }));
 
     return NextResponse.json(transformedWishlistItems);
@@ -84,30 +68,16 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value;
-          },
-        },
-      }
-    );
-    const { productId } = await request.json();
-
-    // Get the current user
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError) throw userError;
+    const user = await currentUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const { productId } = await request.json();
+
     // Check if product exists
     const { data: product, error: productError } = await supabase
-      .from('products')
+      .from('product')
       .select('id')
       .eq('id', productId)
       .single();
@@ -160,26 +130,12 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value;
-          },
-        },
-      }
-    );
-    const { productId } = await request.json();
-
-    // Get the current user
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError) throw userError;
+    const user = await currentUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const { productId } = await request.json();
 
     // Remove item from wishlist
     const { error: deleteError } = await supabase

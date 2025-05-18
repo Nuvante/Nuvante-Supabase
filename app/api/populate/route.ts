@@ -1,11 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { currentUser } from "@clerk/nextjs/server";
-
-// Initialize Supabase client
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
+import supabase from "@/lib/supabase";
 
 export async function POST(request: Request) {
   try {
@@ -30,7 +25,7 @@ export async function POST(request: Request) {
 
     // Check if client exists
     const { data: existingClient, error: checkError } = await supabase
-      .from("clients")
+      .from("client")
       .select("*")
       .eq("email", email)
       .single();
@@ -46,7 +41,7 @@ export async function POST(request: Request) {
     if (existingClient) {
       // Update existing client
       const { data: updatedClient, error: updateError } = await supabase
-        .from("clients")
+        .from("client")
         .update({
           first_name: first_name || existingClient.first_name,
           last_name: last_name || existingClient.last_name,
@@ -71,7 +66,7 @@ export async function POST(request: Request) {
       // Create new client
       const username = email.split('@')[0];
       const { data: newClient, error: createError } = await supabase
-        .from("clients")
+        .from("client")
         .insert([
           {
             email: email,

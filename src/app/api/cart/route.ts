@@ -1,33 +1,17 @@
 import { NextResponse } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
-import { Database } from '@/src/types/supabase';
+import { currentUser } from '@clerk/nextjs/server';
+import supabase from '@/lib/supabase';
 
 export async function GET(request: Request) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value;
-          },
-        },
-      }
-    );
-
-    // Get the current user
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError) throw userError;
+    const user = await currentUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Fetch client data with cart items
     const { data: clientData, error: clientError } = await supabase
-      .from('clients')
+      .from('client')
       .select('cart')
       .eq('clerk_id', user.id)
       .single();
@@ -41,7 +25,7 @@ export async function GET(request: Request) {
 
     // Fetch product data for cart items
     const { data: products, error: productsError } = await supabase
-      .from('products')
+      .from('product')
       .select(`
         id,
         name,
@@ -77,30 +61,16 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value;
-          },
-        },
-      }
-    );
-    const { productId } = await request.json();
-
-    // Get the current user
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError) throw userError;
+    const user = await currentUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const { productId } = await request.json();
+
     // Check if product exists
     const { data: product, error: productError } = await supabase
-      .from('products')
+      .from('product')
       .select('id')
       .eq('id', productId)
       .single();
@@ -114,7 +84,7 @@ export async function POST(request: Request) {
 
     // Get current cart
     const { data: clientData, error: clientError } = await supabase
-      .from('clients')
+      .from('client')
       .select('cart')
       .eq('clerk_id', user.id)
       .single();
@@ -133,7 +103,7 @@ export async function POST(request: Request) {
 
     // Add item to cart
     const { error: updateError } = await supabase
-      .from('clients')
+      .from('client')
       .update({
         cart: [...currentCart, productId],
         updated_at: new Date().toISOString()
@@ -154,18 +124,10 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value;
-          },
-        },
-      }
-    );
+    const user = await currentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     // Get productId from URL
     const url = new URL(request.url);
@@ -178,16 +140,9 @@ export async function DELETE(request: Request) {
       );
     }
 
-    // Get the current user
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError) throw userError;
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     // Get current cart
     const { data: clientData, error: clientError } = await supabase
-      .from('clients')
+      .from('client')
       .select('cart')
       .eq('clerk_id', user.id)
       .single();
@@ -200,7 +155,7 @@ export async function DELETE(request: Request) {
 
     // Update cart
     const { error: updateError } = await supabase
-      .from('clients')
+      .from('client')
       .update({
         cart: updatedCart,
         updated_at: new Date().toISOString()

@@ -22,7 +22,7 @@ interface Product {
 }
 
 export default async function Page() {
-  const { data: products, error } = await supabase.from("products").select("*");
+  const { data: products, error } = await supabase.from("product").select("*");
 
   if (error) {
     console.error("Supabase Error:", error.message);

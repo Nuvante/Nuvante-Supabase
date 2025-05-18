@@ -1,11 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { currentUser } from "@clerk/nextjs/server";
-
-// Initialize Supabase client
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
+import supabase from "@/lib/supabase";
 
 // Cache duration in seconds
 const CACHE_DURATION = 60; // 1 minute
@@ -19,7 +14,7 @@ async function handlePublicRoutes({ id, every }: { id?: string; every?: boolean 
   // Handle fetching a single product
   if (id && !every) {
     const { data: product, error: productError } = await supabase
-      .from("products")
+      .from("product")
       .select(`
         id,
         product_name,
@@ -58,7 +53,7 @@ async function handlePublicRoutes({ id, every }: { id?: string; every?: boolean 
   // Handle fetching all products
   if (every) {
     const { data: products, error: productsError } = await supabase
-      .from("products")
+      .from("product")
       .select(`
         id,
         product_name,
@@ -318,7 +313,7 @@ export async function POST(request: Request) {
         }
 
         const { data: clientCart, error: clientCartError } = await supabase
-          .from("clients")
+          .from("client")
           .select("cart")
           .eq("clerk_id", user.id)
           .single();
@@ -332,17 +327,20 @@ export async function POST(request: Request) {
         }
 
         const currentCart = clientCart?.cart || [];
-        if (currentCart.includes(productId)) {
-          return NextResponse.json(
-            { message: "Product already in cart" },
-            { status: 200, headers }
-          );
+        const existingItemIndex = currentCart.findIndex((item: { id: string }) => item.id === productId);
+
+        if (existingItemIndex !== -1) {
+          // Update quantity if item exists
+          currentCart[existingItemIndex].quantity += 1;
+        } else {
+          // Add new item
+          currentCart.push({ id: productId, quantity: 1 });
         }
 
         const { error: addToCartError } = await supabase
-          .from("clients")
+          .from("client")
           .update({
-            cart: [...currentCart, productId],
+            cart: currentCart,
             updated_at: new Date().toISOString(),
           })
           .eq("clerk_id", user.id);
@@ -369,7 +367,7 @@ export async function POST(request: Request) {
         }
 
         const { data: clientCartData, error: clientCartDataError } = await supabase
-          .from("clients")
+          .from("client")
           .select("cart")
           .eq("clerk_id", user.id)
           .single();
@@ -383,11 +381,11 @@ export async function POST(request: Request) {
         }
 
         const updatedCart = (clientCartData?.cart || []).filter(
-          (id: string) => id !== productId
+          (item: { id: string }) => item.id !== productId
         );
 
         const { error: removeFromCartError } = await supabase
-          .from("clients")
+          .from("client")
           .update({
             cart: updatedCart,
             updated_at: new Date().toISOString(),
@@ -416,7 +414,7 @@ export async function POST(request: Request) {
         }
 
         const { data: clientCartAll, error: clientCartAllError } = await supabase
-          .from("clients")
+          .from("client")
           .select("cart")
           .eq("clerk_id", user.id)
           .single();
@@ -431,8 +429,8 @@ export async function POST(request: Request) {
 
         const currentCartAll = clientCartAll?.cart || [];
         const newCartItems = productIds.filter(
-          (id: string) => !currentCartAll.includes(id)
-        );
+          (id: string) => !currentCartAll.some((item: { id: string }) => item.id === id)
+        ).map(id => ({ id, quantity: 1 }));
 
         if (newCartItems.length === 0) {
           return NextResponse.json(
@@ -442,7 +440,7 @@ export async function POST(request: Request) {
         }
 
         const { error: addAllToCartError } = await supabase
-          .from("clients")
+          .from("client")
           .update({
             cart: [...currentCartAll, ...newCartItems],
             updated_at: new Date().toISOString(),

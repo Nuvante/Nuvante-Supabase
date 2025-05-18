@@ -15,7 +15,7 @@ export async function GET(request: any) {
   try {
     // Delete client row by clerk_id in supabase
     const { error } = await supabase
-      .from("clients")
+      .from("client")
       .delete()
       .eq("clerk_id", clerk_id);
 
